@@ -1,29 +1,72 @@
 package com.josh_demo.dto.request;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import com.josh_demo.utility.validation.AbstractValidatable;
+import com.josh_demo.utility.validation.ValidationUtil;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.util.List;
 
 @Data
-public class UserRequestDto {
-    @NotBlank(message = "Username is required")
-    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+@EqualsAndHashCode(callSuper = true)
+public class UserRequestDto extends AbstractValidatable {
     private String userName;
-
-    @NotBlank(message = "Password is required")
-    @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
-
-    @NotBlank(message = "First name is required")
     private String firstName;
-
-    @NotBlank(message = "Last name is required")
     private String lastName;
-
-    @Email(message = "Invalid email format")
     private String email;
-
     private String phone;
     private String role;
+
+    @Override
+    public List<String> validate() {
+        List<String> errors = newErrorList();
+
+        // Username validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(userName),
+                "Username is required");
+        ValidationUtil.addErrorIfTrue(errors,
+                userName != null && userName.length() < 3,
+                "Username must be at least 3 characters long");
+
+        // Password validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(password),
+                "Password is required");
+        ValidationUtil.addErrorIfTrue(errors,
+                password != null && password.length() < 6,
+                "Password must be at least 6 characters long");
+
+        // Name validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(firstName),
+                "First name is required");
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(lastName),
+                "Last name is required");
+
+        // Email validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(email),
+                "Email is required");
+        ValidationUtil.addErrorIfTrue(errors,
+                !ValidationUtil.isValidEmail(email),
+                "Invalid email format");
+
+        // Phone validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(phone),
+                "Phone number is required");
+        ValidationUtil.addErrorIfTrue(errors,
+                !ValidationUtil.isValidPhone(phone),
+                "Invalid phone number format");
+
+        // Role validation
+        ValidationUtil.addErrorIfTrue(errors,
+                ValidationUtil.isNullOrEmpty(role),
+                "Role is required");
+
+        return errors;
+    }
 }
