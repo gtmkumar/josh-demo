@@ -15,9 +15,11 @@ import com.josh_demo.repository.RoleRepository;
 import com.josh_demo.repository.UserRepository;
 import com.josh_demo.repository.UserRoleRepository;
 import com.josh_demo.security.JwtService;
+import com.josh_demo.service.AuditService;
 import com.josh_demo.service.AuthService;
 import com.josh_demo.utility.ApiHttpStatus;
 import com.josh_demo.utility.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -44,6 +46,8 @@ public class AuthServiceImpl implements AuthService {
     private final UserMapper userMapper;
     private final UserRequestValidator userRequestValidator;
     private final AuthRequestValidator authRequestValidator;
+    private final AuditService auditService;
+    private final HttpServletRequest request;
 
     @Override
     @Transactional
@@ -67,6 +71,8 @@ public class AuthServiceImpl implements AuthService {
         UserResponseDto response = userMapper.toUserResponseDto(savedUser, profile);
         response.setRole(role.getName());
 
+        auditService.logAuthenticationEvent(savedUser, "REGISTER", "SUCCESS", this.request);
+
         return new ApiResponse<>(ApiHttpStatus.CREATED, response);
     }
 
@@ -75,32 +81,42 @@ public class AuthServiceImpl implements AuthService {
     public ApiResponse<AuthResponse> login(AuthRequest request) {
         authRequestValidator.validate(request);
 
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername(),
-                        request.getPassword()
-                )
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername(),
+                            request.getPassword()
+                    )
+            );
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
-        String token = jwtService.generateToken(userDetails);
+            UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
+            String token = jwtService.generateToken(userDetails);
 
-        User user = userRepository.findByUserName(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+            User user = userRepository.findByUserName(request.getUsername())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
-        List<String> roles = userDetails.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toList());
+            List<String> roles = userDetails.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .collect(Collectors.toList());
 
-        UserResponseDto userResponse = userMapper.toUserResponseDto(user, user.getProfile());
-        userResponse.setRole(roles.get(0));
+            UserResponseDto userResponse = userMapper.toUserResponseDto(user, user.getProfile());
+            userResponse.setRole(roles.get(0));
 
-        AuthResponse response = AuthResponse.builder()
-                .token(token)
-                .user(userResponse)
-                .build();
+            AuthResponse response = AuthResponse.builder()
+                    .token(token)
+                    .user(userResponse)
+                    .build();
 
-        return new ApiResponse<>(ApiHttpStatus.OK, response);
+            auditService.logAuthenticationEvent(user, "LOGIN", "SUCCESS", this.request);
+
+            return new ApiResponse<>(ApiHttpStatus.OK, response);
+        } catch (Exception e) {
+            User user = userRepository.findByUserName(request.getUsername()).orElse(null);
+            if (user != null) {
+                auditService.logExceptionEvent(user, "LOGIN", e.getMessage(), "FAILED", this.request);
+            }
+            throw e;
+        }
     }
 
     private Role getOrCreateRole(String roleName) {
